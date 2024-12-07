@@ -9,8 +9,6 @@ A Go-based multi-agent system that simulates characters from "The Office" using 
 - Memory sharing between agents
 - RESTful API interface
 - Configurable personalities via JSON
-- Event-driven architecture using channels
-- Environment variable support
 
 ## 🚀 Getting Started
 
