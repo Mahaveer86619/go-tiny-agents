@@ -9,8 +9,8 @@ import (
 )
 
 type Router struct {
-	agents     []types.Agent
-	memoryChan chan string
+	agents []types.Agent
+	memory *types.Memory
 }
 
 // Add this struct for the response format
@@ -21,8 +21,8 @@ type AgentResponse struct {
 
 func NewRouter() *Router {
 	return &Router{
-		agents:     make([]types.Agent, 0),
-		memoryChan: make(chan string, 100),
+		agents: make([]types.Agent, 0),
+		memory: types.NewMemory(),
 	}
 }
 
@@ -38,7 +38,8 @@ func (r *Router) HandleMessage(w http.ResponseWriter, req *http.Request) {
 
 	// Parse JSON request
 	var payload struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		History []types.Message `json:"history"`
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -51,53 +52,62 @@ func (r *Router) HandleMessage(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Track which agents should respond
-	var respondingAgents []types.Agent
+	// Initialize history if it's nil
+	if payload.History == nil {
+		payload.History = make([]types.Message, 0)
+	}
 
-	// Find all appropriate agents based on message content
+	// Add user's message to history
+	payload.History = append(payload.History, types.Message{
+		From:    "User",
+		Content: payload.Message,
+	})
+
+	// Find responding agents
+	var respondingAgents []types.Agent
 	for _, agent := range r.agents {
 		for _, invocation := range agent.GetPersonality().Invocations {
 			if strings.Contains(strings.ToLower(payload.Message), strings.ToLower(invocation)) {
 				respondingAgents = append(respondingAgents, agent)
-				break // Break inner loop to avoid adding same agent multiple times
+				break
 			}
 		}
 	}
 
-	// If we found matching agents, let them all respond
+	responses := make([]AgentResponse, 0)
+	currentHistory := payload.History
+
+	// Process messages through each responding agent sequentially
 	if len(respondingAgents) > 0 {
-		responses := make([]AgentResponse, 0)
 		for _, agent := range respondingAgents {
-			response := AgentResponse{
+			response := agent.ProcessMessage(payload.Message, currentHistory)
+			agentResp := AgentResponse{
 				Name:    agent.GetPersonality().Name,
-				Message: agent.ProcessMessage(payload.Message),
+				Message: response,
 			}
-			responses = append(responses, response)
-		}
+			responses = append(responses, agentResp)
 
-		// Set content type header
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(responses)
-		return
+			// Add this agent's response to history for next agent
+			currentHistory = append(currentHistory, types.Message{
+				From:    agent.GetPersonality().Name,
+				Content: response,
+			})
+		}
+	} else {
+		// Default to Michael Scott if no specific agents matched
+		for _, agent := range r.agents {
+			if agent.GetPersonality().Name == "Michael Scott" {
+				response := agent.ProcessMessage(payload.Message, currentHistory)
+				responses = append(responses, AgentResponse{
+					Name:    "Michael Scott",
+					Message: response,
+				})
+				break
+			}
+		}
 	}
 
-	// Default to Michael Scott if no specific agents matched
-	for _, agent := range r.agents {
-		if agent.GetPersonality().Name == "Michael Scott" {
-			response := []AgentResponse{{
-				Name:    "Michael Scott",
-				Message: agent.ProcessMessage(payload.Message),
-			}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-			return
-		}
-	}
-
-	// Error case
+	// Return responses
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]AgentResponse{{
-		Name:    "System",
-		Message: "Error: Michael Scott not found",
-	}})
+	json.NewEncoder(w).Encode(responses)
 }

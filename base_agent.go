@@ -46,10 +46,10 @@ func init() {
 	log.Println("Gemini model loaded successfully")
 }
 
-func NewBaseAgent(personality *types.Personality, memoryChan chan string) *types.BaseAgent {
+func NewBaseAgent(personality *types.Personality, memory *types.Memory) *types.BaseAgent {
 	return &types.BaseAgent{
 		Personality: personality,
-		MemoryChan:  memoryChan,
+		MemoryChan:  memory.Channel,
 	}
 }
 
@@ -57,23 +57,40 @@ type CustomerServiceAgent struct {
 	*types.BaseAgent
 }
 
-func NewCustomerServiceAgent(personality *types.Personality, memoryChan chan string) *CustomerServiceAgent {
+func NewCustomerServiceAgent(personality *types.Personality, memory *types.Memory) *CustomerServiceAgent {
 	return &CustomerServiceAgent{
-		BaseAgent: NewBaseAgent(personality, memoryChan),
+		BaseAgent: NewBaseAgent(personality, memory),
 	}
 }
 
-func (a *CustomerServiceAgent) ProcessMessage(message string) string {
+func (a *CustomerServiceAgent) ProcessMessage(message string, history []types.Message) string {
 	// Share memory with other agents
 	a.MemoryChan <- "CustomerService received: " + message
 
-	// Generate response using Gemini directly
+	// Convert history to string format
+	var historyStr string
+	for _, msg := range history {
+		historyStr += fmt.Sprintf("%s: %s\n", msg.From, msg.Content)
+	}
+
+	// Generate response using Gemini
 	ctx := context.Background()
-	prompt := fmt.Sprintf("%s\n\nCharacter Information:\nYou are %s, a %s. %s\n\nRespond to the following message: %s",
+	prompt := fmt.Sprintf(`%s
+
+Character Information:
+You are %s, a %s. %s
+
+Conversation History:
+%s
+
+Current message: %s
+
+Respond to the current message while taking into account the conversation history:`,
 		systemInstructions,
 		a.Personality.Name,
 		a.Personality.Role,
 		a.Personality.Personality,
+		historyStr,
 		message)
 
 	resp, err := model.Generate(ctx,

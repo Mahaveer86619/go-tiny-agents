@@ -39,7 +39,7 @@ func main() {
 	for _, personality := range config.Agents {
 		pers := personality // Create new variable to avoid pointer issues
 		log.Printf("Registering agent: %s (Role: %s)", pers.Name, pers.Role)
-		agent := NewCustomerServiceAgent(&pers, router.memoryChan)
+		agent := NewCustomerServiceAgent(&pers, router.memory)
 		router.RegisterAgent(agent)
 	}
 

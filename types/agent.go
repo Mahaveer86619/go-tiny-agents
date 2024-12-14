@@ -1,7 +1,7 @@
 package types
 
 type Agent interface {
-	ProcessMessage(message string) string
+	ProcessMessage(message string, history []Message) string
 	GetPersonality() *Personality
 }
 
@@ -15,4 +15,9 @@ type Personality struct {
 type BaseAgent struct {
 	Personality *Personality
 	MemoryChan  chan string
+}
+
+type Message struct {
+	From    string `json:"from"`
+	Content string `json:"content"`
 }
